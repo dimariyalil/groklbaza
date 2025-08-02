@@ -2,7 +2,8 @@ import streamlit as st
 import pandas as pd
 import plotly.express as px
 import anthropic
-from datetime import datetime
+from datetime import datetime, date
+from modules.reports import load_data, filter_data, export_csv, get_date_columns, display_report_stats
 
 # Page configuration
 st.set_page_config(
@@ -152,55 +153,133 @@ if selected_section == "Home":
         st.error(f"Error creating chart: {e}")
 
 elif selected_section == "Reports":
-    if selected_subsection:
-        st.header(f"{selected_subsection}")
-        st.info(f"{selected_subsection} functionality coming soon...")
-    else:
-        st.header("Reports Dashboard")
+    st.header("Reports Dashboard")
+    
+    # Reports submenu using radio buttons
+    report_type = st.radio(
+        "Select Report Type:",
+        ["CRM Reports", "P&L Reports", "Partners Reports", "Admin Reports"],
+        horizontal=True
+    )
+    
+    st.subheader(f"{report_type}")
+    
+    # File uploader for data analysis
+    st.subheader("📁 Upload Data File")
+    uploaded_file = st.file_uploader(
+        "Choose a file", 
+        type=['xlsx', 'csv'],
+        help="Upload Excel or CSV files for analysis"
+    )
+    
+    if uploaded_file is not None:
+        # Test: Use modules.reports functions for data processing
+        df = load_data(uploaded_file)
         
-        # File uploader for data analysis
-        st.subheader("Upload Data File")
-        uploaded_file = st.file_uploader(
-            "Choose a file", 
-            type=['xlsx', 'csv'],
-            help="Upload Excel or CSV files for analysis"
-        )
-        
-        if uploaded_file is not None:
-            try:
-                # Test: Handle file upload and display data
-                if uploaded_file.name.endswith('.xlsx'):
-                    df = pd.read_excel(uploaded_file)
-                else:
-                    df = pd.read_csv(uploaded_file)
+        if df is not None:
+            st.success(f"✅ File uploaded successfully! Shape: {df.shape}")
+            
+            # Advanced filters section
+            st.subheader("🔍 Data Filters")
+            
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                # Text search filter
+                search_term = st.text_input(
+                    "Search in Name/Country:", 
+                    placeholder="Type to filter...",
+                    help="Search in Name or Country columns"
+                )
+            
+            with col2:
+                # Date range filter
+                date_columns = get_date_columns(df)
+                date_column = None
+                date_range = None
                 
-                st.success(f"File uploaded successfully! Shape: {df.shape}")
-                
-                # Basic filters
-                st.subheader("Data Filters")
-                search_term = st.text_input("Search in data:", placeholder="Type to filter...")
-                
-                # Apply search filter if provided
-                if search_term:
-                    # Simple string search across all columns
-                    mask = df.astype(str).apply(lambda x: x.str.contains(search_term, case=False, na=False)).any(axis=1)
-                    filtered_df = df[mask]
-                    st.info(f"Showing {len(filtered_df)} of {len(df)} rows matching '{search_term}'")
-                else:
-                    filtered_df = df
-                
-                # Display data table
-                st.subheader("Data Preview")
-                st.dataframe(filtered_df, use_container_width=True)
-                
-                # Basic statistics
-                if len(filtered_df) > 0:
-                    st.subheader("Basic Statistics")
-                    st.write(filtered_df.describe())
+                if date_columns:
+                    date_column = st.selectbox(
+                        "Date Column for filtering:",
+                        ["None"] + date_columns
+                    )
                     
-            except Exception as e:
-                st.error(f"Error processing file: {e}")
-                st.info("Please ensure the file is a valid Excel (.xlsx) or CSV (.csv) file")
+                    if date_column != "None":
+                        # Get min/max dates from the column
+                        try:
+                            min_date = pd.to_datetime(df[date_column]).min().date()
+                            max_date = pd.to_datetime(df[date_column]).max().date()
+                            
+                            date_range = st.date_input(
+                                "Date Range:",
+                                value=(min_date, max_date),
+                                min_value=min_date,
+                                max_value=max_date,
+                                help="Select date range for filtering"
+                            )
+                            
+                            if len(date_range) == 2:
+                                date_range = (date_range[0], date_range[1])
+                            else:
+                                date_range = None
+                                
+                        except Exception as e:
+                            st.warning(f"Could not parse dates in {date_column}")
+                            date_column = None
+                else:
+                    st.info("No date columns detected in the data")
+            
+            # Apply filters using modules.reports function
+            filtered_df = filter_data(
+                df, 
+                search_term=search_term if search_term else None,
+                date_range=date_range,
+                date_column=date_column if date_column != "None" else None
+            )
+            
+            # Show filter results
+            if search_term or (date_range and date_column != "None"):
+                st.info(f"Showing {len(filtered_df)} of {len(df)} rows after filtering")
+            
+            # Export functionality
+            if len(filtered_df) > 0:
+                col1, col2 = st.columns([3, 1])
+                
+                with col2:
+                    # Download button for filtered data
+                    csv_data = export_csv(filtered_df, f"{report_type.lower().replace(' ', '_')}_data")
+                    if csv_data:
+                        st.download_button(
+                            label="📥 Download CSV",
+                            data=csv_data,
+                            file_name=f"{report_type.lower().replace(' ', '_')}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
+                            mime="text/csv",
+                            help="Download filtered data as CSV file"
+                        )
+            
+            # Display data table
+            st.subheader("📊 Data Preview")
+            st.dataframe(filtered_df, use_container_width=True)
+            
+            # Display statistics using modules.reports function
+            if len(filtered_df) > 0:
+                with st.expander("📈 Data Statistics", expanded=False):
+                    display_report_stats(filtered_df)
+    
+    else:
+        # Show instructions when no file uploaded
+        st.info("👆 Upload an Excel (.xlsx) or CSV (.csv) file to start analyzing data")
+        
+        # Show sample data format
+        with st.expander("📋 Expected Data Format", expanded=False):
+            st.write("Your data should contain columns like:")
+            sample_data = pd.DataFrame({
+                'Name': ['User1', 'User2', 'User3'],
+                'Country': ['USA', 'UK', 'Germany'],
+                'Date': ['2025-01-01', '2025-01-02', '2025-01-03'],
+                'Value': [100, 200, 300]
+            })
+            st.dataframe(sample_data)
 
 elif selected_section == "AI Analysis":
     if selected_subsection:
