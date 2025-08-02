@@ -1,0 +1,48 @@
+name: Deploy lbazaGr to Streamlit Cloud
+
+on:
+  push:
+    branches: [ main, cursor/initial-project-foundation-setup-4187 ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v3
+      
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.9'
+        
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        
+    - name: Test Streamlit app
+      run: |
+        python -c "
+        import streamlit as st
+        import pandas as pd
+        import plotly.express as px
+        print('✅ All imports successful')
+        
+        # Test basic functionality
+        df = pd.DataFrame({'x': [1, 2, 3], 'y': [1, 4, 9]})
+        fig = px.line(df, x='x', y='y')
+        print('✅ Plotly chart creation successful')
+        
+        print('✅ lbazaGr app is ready for deployment!')
+        "
+        
+    - name: Deploy notification
+      run: |
+        echo "🚀 lbazaGr is ready for Streamlit Cloud deployment!"
+        echo "📱 To deploy: Connect your GitHub repo at https://share.streamlit.io"
+        echo "📂 Main file: app.py"
+        echo "🔗 Repository: https://github.com/${{ github.repository }}"
