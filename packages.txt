@@ -1,0 +1,2 @@
+# System packages for lbazaGr deployment
+# Add system packages here if needed
